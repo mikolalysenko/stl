@@ -1,3 +1,5 @@
+var through = require("through");
+
 module.exports = {
 
   // `stl` may be binary or ascii
@@ -82,39 +84,46 @@ module.exports = {
   // file format. Passing a truthy value for
   // binary causes a binary stl to be created.
   fromObject: function(obj, binary) {
+  
+    var result = through();
 
     if (!binary) {
-      var str = [
-        'solid'
-      ];
+      result.write('solid\n');
+      var cursor = 0;
+      function nextFace() {
+        while(cursor < obj.facets.length) {
+          var facet = obj.facets[cursor++];
+          var str   = [];
+          if (facet.normal) {
+            var exponential = []
+            facet.normal.forEach(function(a) {
+              exponential.push(a.toExponential());
+            });
 
-      obj.facets.forEach(function(facet) {
-        if (facet.normal) {
-          var exponential = []
-          facet.normal.forEach(function(a) {
-            exponential.push(a.toExponential());
+            str.push('  facet normal ' + exponential.join(' '));
+          } else {
+            str.push('  facet');
+          }
+
+          str.push('    outer loop')
+          facet.verts.forEach(function(vert) {
+            var exponential = []
+            vert.forEach(function(a) {
+              exponential.push(a.toExponential());
+            });
+            str.push('      vertex ' + exponential.join(' '))
           });
-
-          str.push('  facet normal ' + exponential.join(' '));
-        } else {
-          str.push('  facet');
+          str.push('    endloop');
+          str.push('  endfacet\n');
+          if(!result.write(str.join("\n"))) {
+            result.once('drain', nextFace);
+            return;
+          }
         }
-
-        str.push('    outer loop')
-        facet.verts.forEach(function(vert) {
-          var exponential = []
-          vert.forEach(function(a) {
-            exponential.push(a.toExponential());
-          });
-          str.push('      vertex ' + exponential.join(' '))
-        });
-
-        str.push('    endloop');
-        str.push('  endfacet');
-      });
-
-      str.push('endsolid');
-      return str.join('\n');
+        result.end('endsolid');
+      }
+      process.nextTick(nextFace);
+      
     } else {
 
       var count = obj.facets.length;
@@ -143,5 +152,7 @@ module.exports = {
       });
       return ret;
     }
+    
+    return result;
   }
 };
